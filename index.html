@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMAS 5 Premium 充电计算器</title>
+<style>
+  :root { color-scheme: light; --bg:#f4f6f8; --card:#fff; --text:#18212f; --muted:#667085; --line:#e2e7ee; --accent:#176b4d; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px 14px 32px; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif; }
+  main { max-width:620px; margin:0 auto; }
+  h1 { font-size:24px; margin:4px 0 6px; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; margin:12px 0; box-shadow:0 2px 8px rgba(16,24,40,.03); }
+  .field { margin:14px 0; }
+  label { display:block; font-size:14px; font-weight:600; margin-bottom:7px; }
+  input { width:100%; padding:12px; border:1px solid #cfd6df; border-radius:10px; font-size:16px; color:var(--text); background:white; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .results { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .result { background:#f6f8fa; border-radius:12px; padding:14px; min-width:0; }
+  .result .name { color:var(--muted); font-size:13px; margin-bottom:7px; }
+  .result .value { font-size:21px; font-weight:750; overflow-wrap:anywhere; }
+  .result .unit { font-size:12px; color:var(--muted); margin-top:4px; }
+  .primary { background:#e8f4ee; }
+  .primary .value { color:var(--accent); }
+  button { border:0; border-radius:10px; padding:12px 14px; font-size:15px; font-weight:650; cursor:pointer; }
+  .btnrow { display:flex; gap:10px; margin-top:14px; }
+  .btnrow button { flex:1; }
+  .dark { background:#176b4d; color:white; }
+  .light { background:#edf0f4; color:#273444; }
+  .note { font-size:12px; color:var(--muted); line-height:1.55; }
+  .error { color:#b42318; font-size:13px; margin-top:8px; }
+  .bar { height:10px; background:#e8edf1; border-radius:99px; overflow:hidden; margin-top:14px; }
+  .bar > div { height:100%; width:0; background:#23845e; transition:width .15s; }
+  @media (max-width:420px) { body { padding:14px 10px 24px; } .card { padding:14px; } .result .value { font-size:19px; } h1 { font-size:22px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>EMAS 5 Premium 充电计算器</h1>
+  <div class="sub">按你实际充电记录估算 · 44% → 80% · 4.25 小时 · 14.5 kWh</div>
+
+  <section class="card">
+    <div class="two">
+      <div class="field">
+        <label for="start">当前电量 (%)</label>
+        <input id="start" type="number" min="0" max="100" step="1" value="44">
+      </div>
+      <div class="field">
+        <label for="target">目标电量 (%)</label>
+        <input id="target" type="number" min="0" max="100" step="1" value="80">
+      </div>
+    </div>
+    <div class="two">
+      <div class="field">
+        <label for="rate">电价 (RM/kWh)</label>
+        <input id="rate" type="number" min="0" step="0.01" value="1.00">
+      </div>
+      <div class="field">
+        <label for="efficiency">估算效率 (%)</label>
+        <input id="efficiency" type="number" min="1" max="100" step="1" value="100">
+      </div>
+    </div>
+    <div class="note">效率默认 100%，因为你的 14.5 kWh 作为实测充入电量基准。若 14.5 kWh 是车辆电池增加量而非充电桩计费电量，可把效率改为约 90% 估算电网用电量。</div>
+    <div id="error" class="error" role="alert"></div>
+  </section>
+
+  <section class="card">
+    <div class="results">
+      <div class="result primary">
+        <div class="name">预计充电时间</div>
+        <div class="value" id="time">4小时 15分钟</div>
+        <div class="unit">按实测速度线性估算</div>
+      </div>
+      <div class="result">
+        <div class="name">预计费用</div>
+        <div class="value" id="cost">RM 14.50</div>
+        <div class="unit">按输入电价计算</div>
+      </div>
+      <div class="result">
+        <div class="name">预计电量</div>
+        <div class="value" id="energy">14.50 kWh</div>
+        <div class="unit">估算电网用电量</div>
+      </div>
+      <div class="result">
+        <div class="name">电量差</div>
+        <div class="value" id="socDiff">36%</div>
+        <div class="unit">目标电量 − 当前电量</div>
+      </div>
+    </div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="note" id="summary" style="margin-top:10px">从 44% 充到 80%。</div>
+    <div class="btnrow">
+      <button class="dark" id="copy">复制计算结果</button>
+      <button class="light" id="reset">恢复默认值</button>
+    </div>
+    <div id="copyMsg" class="note" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <strong>计算依据</strong>
+    <p class="note">实测平均功率 = 14.5 kWh ÷ 4.25 小时 = 3.41 kW</p>
+    <p class="note">每增加 1% 电量约需 0.4028 kWh；按实测平均功率，每增加 1% 约需 7.08 分钟。</p>
+    <p class="note">公式：预计时间 = 电量差 ÷ 36 × 4.25 小时；预计电量 = 电量差 ÷ 36 × 14.5 kWh；费用 = 预计电网用电量 × 电价。</p>
+    <p class="note">这是基于你那次充电记录的估算。实际时间和耗电可能因充电功率、温度、损耗及车辆设置而不同。</p>
+  </section>
+</main>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const defaults = { start: 44, target: 80, rate: 1.00, efficiency: 100 };
+  function fmtDuration(hours) {
+    const totalMinutes = Math.ceil(hours * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h === 0) return m + "分钟";
+    return h + "小时" + (m ? " " + m + "分钟" : "");
+  }
+  function calculate() {
+    const start = Number($("start").value);
+    const target = Number($("target").value);
+    const rate = Number($("rate").value);
+    const efficiency = Number($("efficiency").value);
+    const error = $("error");
+    error.textContent = "";
+    if (![start, target, rate, efficiency].every(Number.isFinite) ||
+        start < 0 || start > 100 || target < 0 || target > 100 ||
+        target < start || rate < 0 || efficiency <= 0 || efficiency > 100) {
+      error.textContent = "请检查输入：电量需为 0–100%，目标电量不能低于当前电量，电价不能小于 0，效率需在 1–100%。";
+      ["time","cost","energy","socDiff"].forEach(id => $(id).textContent = "—");
+      $("bar").style.width = "0%";
+      $("summary").textContent = "请修正输入后查看结果。";
+      return null;
+    }
+    const diff = target - start;
+    const energy = diff / 36 * 14.5 / (efficiency / 100);
+    const hours = diff / 36 * 4.25;
+    const cost = energy * rate;
+    $("time").textContent = diff === 0 ? "0分钟" : fmtDuration(hours);
+    $("cost").textContent = "RM " + cost.toFixed(2);
+    $("energy").textContent = energy.toFixed(2) + " kWh";
+    $("socDiff").textContent = diff.toFixed(0) + "%";
+    $("bar").style.width = target + "%";
+    $("summary").textContent = `从 ${start}% 充到 ${target}%；按实测基准平均功率约 3.41 kW，预计耗时 ${diff === 0 ? "0分钟" : fmtDuration(hours)}。`;
+    return { start, target, rate, efficiency, diff, energy, hours, cost };
+  }
+  ["start","target","rate","efficiency"].forEach(id => $(id).addEventListener("input", calculate));
+  $("reset").addEventListener("click", () => {
+    Object.keys(defaults).forEach(k => $(k).value = defaults[k]);
+    $("copyMsg").textContent = "";
+    calculate();
+  });
+  $("copy").addEventListener("click", async () => {
+    const r = calculate();
+    if (!r) return;
+    const text = `EMAS 5 Premium 充电估算\n当前电量：${r.start}%\n目标电量：${r.target}%\n电量差：${r.diff}%\n预计时间：${r.diff === 0 ? "0分钟" : fmtDuration(r.hours)}\n预计电网用电量：${r.energy.toFixed(2)} kWh\n电价：RM ${r.rate.toFixed(2)}/kWh\n预计费用：RM ${r.cost.toFixed(2)}\n估算效率：${r.efficiency}%`;
+    try {
+      await navigator.clipboard.writeText(text);
+      $("copyMsg").textContent = "计算结果已复制。";
+    } catch (_) {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand("copy"); ta.remove();
+      $("copyMsg").textContent = ok ? "计算结果已复制。" : "复制失败，请手动复制结果。";
+    }
+  });
+  calculate();
+})();
+</script>
+</body>
+</html>
